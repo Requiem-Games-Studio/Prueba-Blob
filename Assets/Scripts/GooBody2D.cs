@@ -64,6 +64,11 @@ public class GooBody2D : MonoBehaviour
     Rigidbody2D rb;
     CircleCollider2D bodyCollider;
 
+    // Altura normal (más arriba del suelo)
+    public Vector2 normalOffset = new Vector2(0f, -0.9f);
+    // Altura cuando está aplastado
+    public Vector2 squeezedOffset = new Vector2(0f, 0f);
+
     Vector3 scaleVel;
 
     Vector3 armLBaseLocal, armRBaseLocal;
@@ -537,6 +542,7 @@ public class GooBody2D : MonoBehaviour
         if (!useSqueezeZones) return;
         if (!other.CompareTag("SqueezeZone")) return;
 
+        bodyCollider.offset = squeezedOffset;
         currentSqueezeZone = other;
         ActualizarSqueezeDesdeZona(other);
     }
@@ -546,6 +552,7 @@ public class GooBody2D : MonoBehaviour
         if (!useSqueezeZones) return;
         if (other != currentSqueezeZone) return;
 
+        bodyCollider.offset = normalOffset;
         currentSqueezeZone = null;
         squeezeScaleTarget = Vector3.one; // volver a tamaño normal
     }
