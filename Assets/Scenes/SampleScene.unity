@@ -38,7 +38,7 @@ RenderSettings:
   m_ReflectionIntensity: 1
   m_CustomReflection: {fileID: 0}
   m_Sun: {fileID: 0}
-  m_IndirectSpecularColor: {r: 0.12731713, g: 0.13414738, b: 0.121078536, a: 1}
+  m_IndirectSpecularColor: {r: 0.12731749, g: 0.13414757, b: 0.1210787, a: 1}
   m_UseRadianceAmbientProbe: 0
 --- !u!157 &3
 LightmapSettings:
@@ -245,6 +245,17 @@ MonoBehaviour:
   maxSpeed: 10
   squashAmount: 0.05
   squashSmooth: 0.08
+  groundMask:
+    serializedVersion: 2
+    m_Bits: 4294967295
+  groundCheckOffsetY: -4
+  groundCheckRadius: 0.2
+  jumpForce: 8.5
+  maxAirJumps: 2
+  coyoteTime: 0.12
+  jumpBufferTime: 0.12
+  lowJumpGravityMult: 2.2
+  fallGravityMult: 2.8
   limbFollow: 10
   eyeRange: 0.24
   idleBobAmplitude: 0.23
@@ -2012,7 +2023,7 @@ GameObject:
   - component: {fileID: 1781284186}
   - component: {fileID: 1781284185}
   - component: {fileID: 1781284184}
-  m_Layer: 0
+  m_Layer: 3
   m_Name: Ground
   m_TagString: Untagged
   m_Icon: {fileID: 0}

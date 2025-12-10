@@ -15,16 +15,23 @@ public class GooController2D : MonoBehaviour
         // Movimiento horizontal (A/D o flechas)
         float x = Input.GetAxisRaw("Horizontal");
 
-        // Salto (por defecto la tecla Space en el eje "Jump")
-        bool jumpDown = Input.GetButtonDown("Jump");
-
         // Mandamos el input al cuerpo
         goo.input = new Vector2(x, 0f);
 
-       // if (jumpDown)
+           // Salto (por defecto la tecla Space en el eje "Jump")
+        if (Input.GetButtonDown("Jump"))
         {
-       //     goo.QueueJump();
+            goo.PressJump();
         }
+
+        if (Input.GetButtonUp("Jump"))
+        {
+            goo.ReleaseJump();
+        }
+
+       // if (jumpDown)
+       //     goo.QueueJump();
+        
     }
 }
 

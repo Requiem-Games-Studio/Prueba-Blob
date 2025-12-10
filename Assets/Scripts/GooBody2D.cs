@@ -30,6 +30,17 @@ public class GooBody2D : MonoBehaviour
     public float squashAmount = 0.15f;   // squash por velocidad
     public float squashSmooth = 0.1f;
 
+    [Header("Jump")]
+    public LayerMask groundMask;
+    public float groundCheckOffsetY = -0.5f; // punto de chequeo (bajo el cuerpo)
+    public float groundCheckRadius  = 0.2f;  // radio del chequeo
+    public float jumpForce          = 8.5f;  // fuerza del salto (impulso)
+    public int   maxAirJumps        = 0;     // 0 = solo salto en tierra, 1 = doble salto, etc.
+    public float coyoteTime         = 0.12f; // margen tras caer aún puedes saltar
+    public float jumpBufferTime     = 0.12f; // margen si presionas antes de tocar suelo
+    public float lowJumpGravityMult = 2.2f;  // si sueltas salto rápido, cae más
+    public float fallGravityMult    = 2.8f;  // caída más pesada
+
     [Header("Limb Follow")]
     public float limbFollow = 12f;
 
@@ -42,7 +53,7 @@ public class GooBody2D : MonoBehaviour
     public float idleBobFrequency = 1.5f;
 
     [Header("Blink")]
-    public float minBlinkInterval = 2f;      // puedes poner 2 y 2 para cada 2s exactos
+    public float minBlinkInterval = 2f;
     public float maxBlinkInterval = 5f;
     public float blinkDuration    = 0.12f;
 
@@ -52,9 +63,9 @@ public class GooBody2D : MonoBehaviour
 
     [Header("Squeeze (espacios angostos)")]
     public bool  useSqueezeZones   = true;
-    public float squeezeLerpSpeed  = 10f;   // rapidez de aplastarse/recuperarse
+    public float squeezeLerpSpeed  = 10f;
     [Range(0.1f, 1f)]
-    public float minSqueezeFactor  = 0.25f; // tamaño mínimo relativo (25%)
+    public float minSqueezeFactor  = 0.25f;
 
     // --- Inputs públicos (los rellena tu controller) ---
     [HideInInspector] public Vector2 input;
@@ -64,9 +75,8 @@ public class GooBody2D : MonoBehaviour
     Rigidbody2D rb;
     CircleCollider2D bodyCollider;
 
-    // Altura normal (más arriba del suelo)
+    // Offsets del collider (tuyos)
     public Vector2 normalOffset = new Vector2(0f, -0.9f);
-    // Altura cuando está aplastado
     public Vector2 squeezedOffset = new Vector2(0f, 0f);
 
     Vector3 scaleVel;
@@ -76,7 +86,6 @@ public class GooBody2D : MonoBehaviour
     Vector3 bodyBaseLocal;
     Vector3 bodyBaseScale = Vector3.one;
 
-    // Tamaño base del sprite del cuerpo (en mundo) para calcular squeeze
     Vector2 baseBodySize;
 
     float walkPhase;
@@ -101,6 +110,14 @@ public class GooBody2D : MonoBehaviour
     Vector3 squeezeScaleTarget  = Vector3.one;
     Vector3 squeezeScaleCurrent = Vector3.one;
     Collider2D currentSqueezeZone;
+
+    // Jump state
+    bool grounded;
+    float coyoteCounter;
+    float jumpBufferCounter;
+    int   airJumpsUsed;
+    bool  jumpHeld;
+    bool  jumpQueued; // pedido de salto (desde input)
 
     void Awake()
     {
@@ -138,11 +155,13 @@ public class GooBody2D : MonoBehaviour
 
         squeezeScaleTarget  = Vector3.one;
         squeezeScaleCurrent = Vector3.one;
+
+        // recomendado para no girar con golpes
+        rb.freezeRotation = true;
     }
 
     void Start()
     {
-        // Colocar miembros en sus anchors al inicio
         if (useLimbAnchors)
         {
             if (armL && anchorArmL) armL.position = anchorArmL.position;
@@ -154,7 +173,7 @@ public class GooBody2D : MonoBehaviour
 
     void Update()
     {
-        // --- Movimiento horizontal con física ---
+        // --- Movimiento horizontal con física (como lo tenías) ---
         if (input.sqrMagnitude > 0.0001f)
             rb.AddForce(new Vector2(input.x, 0f) * moveForce, ForceMode2D.Force);
 
@@ -163,6 +182,22 @@ public class GooBody2D : MonoBehaviour
 
         if (speedX > maxSpeed)
             rb.velocity = new Vector2(Mathf.Sign(vel.x) * maxSpeed, vel.y);
+
+        // --- SALTO: lectura rápida con input.y (opcional) ---
+       // if (input.y > 0.5f) PressJump();
+        //else ReleaseJump();
+
+    
+
+        // --- Ground check, coyote y jump buffer ---
+        UpdateGrounded();
+        UpdateJumpTimers();
+
+        // --- Ejecutar salto si corresponde ---
+        TryConsumeJump();
+
+        // --- Gravedad variable para mejor feel ---
+        ApplyBetterJumpGravity();
 
         // --- Squash (velocidad + colisión + squeeze) ---
         ActualizarSquashVisual(speedX);
@@ -188,89 +223,162 @@ public class GooBody2D : MonoBehaviour
         UpdateEyes();
     }
 
-    // ================= SQUASH VISUAL GLOBAL =================
-  void ActualizarSquashVisual(float speedX)
-{
-    if (!bodySprite) return;
-
-    // 1) Squash por velocidad
-    float t = Mathf.Clamp01(speedX / maxSpeed);
-    Vector3 moveScale = new Vector3(
-        1f + t * squashAmount,
-        1f - t * squashAmount,
-        1f
-    );
-
-    // 2) Squash por colisión (impacto)
-    Vector3 collisionScale = Vector3.one;
-    if (collisionSquashTimer > 0f)
+    // =============== INPUT API PARA TU CONTROLLER ===============
+    public void PressJump()
     {
-        collisionSquashTimer -= Time.deltaTime;
-        float k = Mathf.Clamp01(collisionSquashTimer / collisionSquashDuration);
-        float strength = Mathf.Sin(k * Mathf.PI); // 0 → 1 → 0
+        if (!jumpHeld) // flanco de subida
+            jumpQueued = true;
+        jumpHeld = true;
+    }
 
-        if (Mathf.Abs(collisionNormal.x) > Mathf.Abs(collisionNormal.y))
+    public void ReleaseJump()
+    {
+        jumpHeld = false;
+    }
+
+    // =============== GROUND CHECK + TIMERS ===============
+    void UpdateGrounded()
+    {
+        Vector2 origin = (Vector2)transform.position + new Vector2(0f, groundCheckOffsetY);
+        grounded = Physics2D.OverlapCircle(origin, groundCheckRadius, groundMask);
+
+        if (grounded)
         {
-            // Golpe contra pared
-            float sx = 1f - collisionSquashAmount * strength;
-            float sy = 1f + collisionSquashAmount * strength;
-            collisionScale = new Vector3(sx, sy, 1f);
+            coyoteCounter = coyoteTime;
+            airJumpsUsed = 0; // reset al tocar suelo
         }
         else
         {
-            // Golpe contra suelo/techo
-            float sy = 1f - collisionSquashAmount * strength;
-            float sx = 1f + collisionSquashAmount * strength;
-            collisionScale = new Vector3(sx, sy, 1f);
+            coyoteCounter -= Time.deltaTime;
         }
     }
 
-    // 3) Squeeze (espacios angostos) — SOLO visual aquí
-    squeezeScaleCurrent = Vector3.Lerp(
-        squeezeScaleCurrent,
-        squeezeScaleTarget,
-        Time.deltaTime * squeezeLerpSpeed
-    );
-
-    // 4) Factor visual total = movimiento * colisión * squeeze
-    Vector3 visualFactor = Vector3.Scale(moveScale, collisionScale);
-    visualFactor = Vector3.Scale(visualFactor, squeezeScaleCurrent);
-
-    // Aplicar al sprite
-    Vector3 targetScale = new Vector3(
-        bodyBaseScale.x * visualFactor.x,
-        bodyBaseScale.y * visualFactor.y,
-        bodyBaseScale.z * visualFactor.z
-    );
-
-    bodySprite.localScale = Vector3.SmoothDamp(
-        bodySprite.localScale,
-        targetScale,
-        ref scaleVel,
-        squashSmooth
-    );
-
-    // 5) Collider: SOLO responde a squeeze, NO a velocidad ni colisión
-    if (bodyCollider != null)
+    void UpdateJumpTimers()
     {
-        // Por defecto, tamaño normal
-        float targetRadius = baseColliderRadius;
+        if (jumpQueued)
+            jumpBufferCounter = jumpBufferTime;
+        else
+            jumpBufferCounter -= Time.deltaTime;
 
-        // Si estamos en una zona angosta y squeeze está activado, lo hacemos más pequeño
-        if (useSqueezeZones && currentSqueezeZone != null)
+        // limpiar flag de frame
+        jumpQueued = false;
+    }
+
+    void TryConsumeJump()
+    {
+        // ¿hay un salto en buffer y se puede saltar por coyote o suelo?
+        bool canGroundJump = (grounded || coyoteCounter > 0f);
+        bool canAirJump    = (!canGroundJump && airJumpsUsed < maxAirJumps);
+
+        if (jumpBufferCounter > 0f && (canGroundJump || canAirJump))
         {
-            float squeezeFactor = Mathf.Min(squeezeScaleCurrent.x, squeezeScaleCurrent.y);
-            targetRadius = baseColliderRadius * squeezeFactor;
+            // aplicar salto
+            float vy = rb.velocity.y;
+            if (vy < 0f) vy = 0f; // evita salto "pesado" si caías
+            rb.velocity = new Vector2(rb.velocity.x, vy);
+            rb.AddForce(Vector2.up * jumpForce, ForceMode2D.Impulse);
+
+            // contabilidad
+            if (canAirJump && !canGroundJump)
+                airJumpsUsed++;
+
+            // consumir buffer y coyote
+            jumpBufferCounter = 0f;
+            coyoteCounter = 0f;
+        }
+    }
+
+    void ApplyBetterJumpGravity()
+    {
+        // Caída más pesada
+        if (rb.velocity.y < -0.01f)
+        {
+            rb.velocity += Vector2.up * Physics2D.gravity.y * (fallGravityMult - 1f) * Time.deltaTime;
+        }
+        // Si vas subiendo pero soltaste salto, corta la subida
+        else if (rb.velocity.y > 0.01f && !jumpHeld)
+        {
+            rb.velocity += Vector2.up * Physics2D.gravity.y * (lowJumpGravityMult - 1f) * Time.deltaTime;
+        }
+    }
+
+    // ================= SQUASH VISUAL GLOBAL =================
+    void ActualizarSquashVisual(float speedX)
+    {
+        if (!bodySprite) return;
+
+        // 1) Squash por velocidad
+        float t = Mathf.Clamp01(speedX / maxSpeed);
+        Vector3 moveScale = new Vector3(
+            1f + t * squashAmount,
+            1f - t * squashAmount,
+            1f
+        );
+
+        // 2) Squash por colisión
+        Vector3 collisionScale = Vector3.one;
+        if (collisionSquashTimer > 0f)
+        {
+            collisionSquashTimer -= Time.deltaTime;
+            float k = Mathf.Clamp01(collisionSquashTimer / collisionSquashDuration);
+            float strength = Mathf.Sin(k * Mathf.PI);
+
+            if (Mathf.Abs(collisionNormal.x) > Mathf.Abs(collisionNormal.y))
+            {
+                float sx = 1f - collisionSquashAmount * strength;
+                float sy = 1f + collisionSquashAmount * strength;
+                collisionScale = new Vector3(sx, sy, 1f);
+            }
+            else
+            {
+                float sy = 1f - collisionSquashAmount * strength;
+                float sx = 1f + collisionSquashAmount * strength;
+                collisionScale = new Vector3(sx, sy, 1f);
+            }
         }
 
-        bodyCollider.radius = Mathf.Lerp(
-            bodyCollider.radius,
-            targetRadius,
+        // 3) Squeeze (espacios angostos) — SOLO visual aquí
+        squeezeScaleCurrent = Vector3.Lerp(
+            squeezeScaleCurrent,
+            squeezeScaleTarget,
             Time.deltaTime * squeezeLerpSpeed
         );
-    }
-}
 
+        // 4) Factor visual total = movimiento * colisión * squeeze
+        Vector3 visualFactor = Vector3.Scale(moveScale, collisionScale);
+        visualFactor = Vector3.Scale(visualFactor, squeezeScaleCurrent);
+
+        // Aplicar al sprite
+        Vector3 targetScale = new Vector3(
+            bodyBaseScale.x * visualFactor.x,
+            bodyBaseScale.y * visualFactor.y,
+            bodyBaseScale.z * visualFactor.z
+        );
+
+        bodySprite.localScale = Vector3.SmoothDamp(
+            bodySprite.localScale,
+            targetScale,
+            ref scaleVel,
+            squashSmooth
+        );
+
+        // 5) Collider: SOLO responde a squeeze, NO a velocidad ni colisión
+        if (bodyCollider != null)
+        {
+            float targetRadius = baseColliderRadius;
+            if (useSqueezeZones && currentSqueezeZone != null)
+            {
+                float squeezeFactor = Mathf.Min(squeezeScaleCurrent.x, squeezeScaleCurrent.y);
+                targetRadius = baseColliderRadius * squeezeFactor;
+            }
+
+            bodyCollider.radius = Mathf.Lerp(
+                bodyCollider.radius,
+                targetRadius,
+                Time.deltaTime * squeezeLerpSpeed
+            );
+        }
+    }
 
     // ================== IDLE ==================
     void UpdateIdlePose()
@@ -288,8 +396,6 @@ public class GooBody2D : MonoBehaviour
         {
             idlePhase += idleBobFrequency * Time.deltaTime;
             float bob = Mathf.Sin(idlePhase) * idleBobAmplitude;
-
-            // Solo mueve el sprite, los pies se quedan en su sitio
             bodySprite.localPosition = bodyBaseLocal + Vector3.up * bob;
         }
     }
@@ -316,12 +422,10 @@ public class GooBody2D : MonoBehaviour
         float stride = stepLength;
         float lift   = stepHeight;
 
-        // Pierna izquierda
         if (anchorLegL)
         {
             float c = Mathf.Cos(phaseLegL);
             float s = Mathf.Sin(phaseLegL);
-
             float offX = c * stride;
             float offY = s > 0f ? s * lift : 0f;
 
@@ -335,12 +439,10 @@ public class GooBody2D : MonoBehaviour
             );
         }
 
-        // Pierna derecha
         if (anchorLegR)
         {
             float c = Mathf.Cos(phaseLegR);
             float s = Mathf.Sin(phaseLegR);
-
             float offX = c * stride;
             float offY = s > 0f ? s * lift : 0f;
 
@@ -354,16 +456,13 @@ public class GooBody2D : MonoBehaviour
             );
         }
 
-        // Brazos
         float armRadiusX = armSwingX;
         float armRadiusY = armSwingY;
 
-        // Brazo izquierdo (sincronizado con pierna derecha)
         if (anchorArmL)
         {
             float c = Mathf.Cos(phaseLegR);
             float s = Mathf.Sin(phaseLegR);
-
             float offX = c * armRadiusX;
             float offY = s * armRadiusY;
 
@@ -377,12 +476,10 @@ public class GooBody2D : MonoBehaviour
             );
         }
 
-        // Brazo derecho (sincronizado con pierna izquierda)
         if (anchorArmR)
         {
             float c = Mathf.Cos(phaseLegL);
             float s = Mathf.Sin(phaseLegL);
-
             float offX = c * armRadiusX;
             float offY = s * armRadiusY;
 
@@ -396,7 +493,6 @@ public class GooBody2D : MonoBehaviour
             );
         }
 
-        // Bob del cuerpo al caminar
         if (bodySprite)
         {
             float bob = Mathf.Abs(Mathf.Sin(walkPhase)) * bodyBobAmplitude * moveAmount;
@@ -571,5 +667,13 @@ public class GooBody2D : MonoBehaviour
         heightFactor = Mathf.Clamp(heightFactor, minSqueezeFactor, 1f);
 
         squeezeScaleTarget = new Vector3(widthFactor, heightFactor, 1f);
+    }
+
+    // ======== Gizmos útiles para ver el ground check ========
+    void OnDrawGizmosSelected()
+    {
+        Gizmos.color = Color.green;
+        Vector3 origin = transform.position + new Vector3(0f, groundCheckOffsetY, 0f);
+        Gizmos.DrawWireSphere(origin, groundCheckRadius);
     }
 }
