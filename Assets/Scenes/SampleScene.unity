@@ -250,7 +250,7 @@ MonoBehaviour:
     m_Bits: 4294967295
   groundCheckOffsetY: -4
   groundCheckRadius: 0.2
-  jumpForce: 8.5
+  jumpForce: 20
   maxAirJumps: 2
   coyoteTime: 0.12
   jumpBufferTime: 0.12
