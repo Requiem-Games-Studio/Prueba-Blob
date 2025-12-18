@@ -125,6 +125,10 @@ public class GooBody2D : MonoBehaviour
     bool  jumpHeld;
     bool  jumpQueued; // pedido de salto (desde input)
 
+    // Llamado de Animaciones
+    public Animator anim; 
+
+
     void Awake()
     {
         rb = GetComponent<Rigidbody2D>();
@@ -189,15 +193,10 @@ public class GooBody2D : MonoBehaviour
         if (speedX > maxSpeed)
             rb.velocity = new Vector2(Mathf.Sign(vel.x) * maxSpeed, vel.y);
 
-        // --- SALTO: lectura rápida con input.y (opcional) ---
-       // if (input.y > 0.5f) PressJump();
-        //else ReleaseJump();
-
-    
-
         // --- Ground check, coyote y jump buffer ---
         UpdateGrounded();
         UpdateJumpTimers();
+        anim.SetBool("IsGround" , grounded);
 
         // --- Ejecutar salto si corresponde ---
         TryConsumeJump();
@@ -208,38 +207,43 @@ public class GooBody2D : MonoBehaviour
         // --- Squash (velocidad + colisión + squeeze) ---
         ActualizarSquashVisual(speedX);
 
+        // Llamado de direccion de OJOS y parpadeo
+        UpdateEyes();
+        UpdateBlinkLogic();
+
         // --- Estado caminar vs idle ---
         bool isWalking = grounded && speedX >= startWalkSpeed;
-
-        if (useLimbAnchors)
-        {
+ 
         if (grounded)
-    {
-        // Suelo: caminar o idle
-        if (isWalking)
-            UpdateRaymanWalk();
-        else
-            UpdateIdlePose();
-    }
-    else
-    {
-        // En el aire: piernas colgando / pose aérea
-        UpdateAirPose();
+        {
+            // Suelo: caminar o idle
+            if (isWalking)
+                UpdateRaymanWalk();
+            else
+                UpdateIdlePose();
+        }
+  
+   
+        FollowLimbToAnchor(legL,  anchorLegL);
+        FollowLimbToAnchor(legR,  anchorLegR);
+        FollowLimbToAnchor(armL,  anchorArmL);
+        FollowLimbToAnchor(armR,  anchorArmR);
     }
 
-    FollowLimbToAnchor(legL,  anchorLegL);
-    FollowLimbToAnchor(legR,  anchorLegR);
-    FollowLimbToAnchor(armL,  anchorArmL);
-    FollowLimbToAnchor(armR,  anchorArmR);
-}
-}
 
     // =============== INPUT API PARA TU CONTROLLER ===============
     public void PressJump()
     {
-        if (!jumpHeld) // flanco de subida
-            jumpQueued = true;
+        if (!jumpHeld) {
+        // flanco de subida
+
+        anim.Play("Salto");
+          jumpQueued = true;
         jumpHeld = true;
+        
+        }
+        
+
     }
 
     public void ReleaseJump()
@@ -411,67 +415,15 @@ public class GooBody2D : MonoBehaviour
         }
     }
 
-        // ================== AIR POSE (piernas colgando) ==================
-    void UpdateAirPose()
-    {
-        // Piernas un poco más hacia abajo
-        if (anchorLegL)
-        {
-            Vector3 target = legLBaseLocal + airLegOffset;
-            anchorLegL.localPosition = Vector3.Lerp(
-                anchorLegL.localPosition,
-                target,
-                Time.deltaTime * airPoseLerp
-            );
-        }
+  
 
-        if (anchorLegR)
-        {
-            Vector3 target = legRBaseLocal + airLegOffset;
-            anchorLegR.localPosition = Vector3.Lerp(
-                anchorLegR.localPosition,
-                target,
-                Time.deltaTime * airPoseLerp
-            );
-        }
 
-        // Brazos un poco hacia arriba (como si se estuviera estabilizando)
-        if (anchorArmL)
-        {
-            Vector3 target = armLBaseLocal + airArmOffset;
-            anchorArmL.localPosition = Vector3.Lerp(
-                anchorArmL.localPosition,
-                target,
-                Time.deltaTime * airPoseLerp
-            );
-        }
-
-        if (anchorArmR)
-        {
-            Vector3 target = armRBaseLocal + airArmOffset;
-            anchorArmR.localPosition = Vector3.Lerp(
-                anchorArmR.localPosition,
-                target,
-                Time.deltaTime * airPoseLerp
-            );
-        }
-         
-
-        // El cuerpo, si quieres, sin bob de caminar: lo regresamos a su base
-        if (bodySprite)
-        {
-            bodySprite.localPosition = Vector3.Lerp(
-                bodySprite.localPosition,
-                bodyBaseLocal,
-                Time.deltaTime * 8f
-            );
-        }
-     }
+       
         
     // ================== WALK CYCLE ==================
     void UpdateRaymanWalk()
     {
-         // 🚫 Si no está en el suelo, NO animamos caminar
+         
         if (!grounded)
         return;
         float speedX = Mathf.Abs(rb.velocity.x);

@@ -247,7 +247,7 @@ MonoBehaviour:
   squashSmooth: 0.08
   groundMask:
     serializedVersion: 2
-    m_Bits: 4294967295
+    m_Bits: 8
   groundCheckOffsetY: -4
   groundCheckRadius: 0.2
   jumpForce: 20
@@ -256,6 +256,9 @@ MonoBehaviour:
   jumpBufferTime: 0.12
   lowJumpGravityMult: 2.2
   fallGravityMult: 2.8
+  airLegOffset: {x: 0, y: -0.15, z: 0}
+  airArmOffset: {x: 0, y: 0.1, z: 0}
+  airPoseLerp: 8
   limbFollow: 10
   eyeRange: 0.24
   idleBobAmplitude: 0.23
@@ -272,6 +275,7 @@ MonoBehaviour:
   lookDir: {x: 0, y: 0}
   normalOffset: {x: 0, y: -0.9}
   squeezedOffset: {x: 0, y: 0}
+  anim: {fileID: 185391017}
 --- !u!58 &185391013
 CircleCollider2D:
   m_ObjectHideFlags: 0
@@ -487,13 +491,13 @@ Transform:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 242411710}
   serializedVersion: 2
-  m_LocalRotation: {x: -0, y: -0, z: -0, w: 1}
+  m_LocalRotation: {x: -0, y: -0, z: 0.0047714943, w: 0.9999886}
   m_LocalPosition: {x: 1.74, y: -3.66, z: 0}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children: []
   m_Father: {fileID: 185391015}
-  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0.547}
 --- !u!212 &242411712
 SpriteRenderer:
   m_ObjectHideFlags: 0
@@ -795,7 +799,7 @@ GameObject:
   - component: {fileID: 705282924}
   - component: {fileID: 705282923}
   - component: {fileID: 705282922}
-  m_Layer: 0
+  m_Layer: 3
   m_Name: Ground
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -1009,7 +1013,7 @@ GameObject:
   - component: {fileID: 811875314}
   - component: {fileID: 811875313}
   - component: {fileID: 811875312}
-  m_Layer: 0
+  m_Layer: 3
   m_Name: Ground
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -1245,13 +1249,13 @@ Transform:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 1032504216}
   serializedVersion: 2
-  m_LocalRotation: {x: -0, y: -0, z: -0, w: 1}
+  m_LocalRotation: {x: -0, y: -0, z: 0.0029442194, w: 0.9999957}
   m_LocalPosition: {x: -1.84, y: -3.66, z: 0}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children: []
   m_Father: {fileID: 185391015}
-  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0.337}
 --- !u!212 &1032504218
 SpriteRenderer:
   m_ObjectHideFlags: 0
@@ -1487,7 +1491,7 @@ GameObject:
   - component: {fileID: 1180775097}
   - component: {fileID: 1180775096}
   - component: {fileID: 1180775095}
-  m_Layer: 0
+  m_Layer: 3
   m_Name: Ground
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -1617,7 +1621,7 @@ GameObject:
   - component: {fileID: 1265673321}
   - component: {fileID: 1265673320}
   - component: {fileID: 1265673319}
-  m_Layer: 0
+  m_Layer: 3
   m_Name: Ground
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -1862,7 +1866,7 @@ GameObject:
   - component: {fileID: 1685943898}
   - component: {fileID: 1685943897}
   - component: {fileID: 1685943896}
-  m_Layer: 0
+  m_Layer: 3
   m_Name: Ground
   m_TagString: Untagged
   m_Icon: {fileID: 0}
